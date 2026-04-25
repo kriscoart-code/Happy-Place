@@ -265,6 +265,7 @@
       mineRadius: 18,
       cannonGroundHitCounter: 0,
       nextCannonGroundHitAt: 3,
+      nextEnemyDeathVariant: 0,
     };
 
     const bgImage = new Image();
@@ -303,6 +304,16 @@
         cannonHit: './assets/effects/cannon-hit',
         bulletHitSingle: './assets/effects/bullet-hit-single',
         bulletHits: './assets/effects/bullet-hits',
+      },
+      enemies: {
+        woodwalker: {
+          walkLeft: './assets/enemies/woodwalker/walk-left',
+          walkTurn: './assets/enemies/woodwalker/walk-turn',
+          walkFront: './assets/enemies/woodwalker/walk-front',
+          death1: './assets/enemies/woodwalker/death-1',
+          death2: './assets/enemies/woodwalker/death-2',
+          deathExplosion: './assets/enemies/woodwalker/death-explosion',
+        },
       },
     };
 
@@ -373,6 +384,23 @@
       ctx.globalAlpha = alpha;
       ctx.globalCompositeOperation = blendMode;
       ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
+    }
+
+    function drawSequenceFrameExt(frames, frameIndex, dx, dy, dw, dh, options = {}) {
+      const img = frames[Math.max(0, Math.min(frames.length - 1, frameIndex))];
+      if (!img?.complete || !img.naturalWidth) return;
+      const {
+        alpha = 1,
+        blendMode = 'source-over',
+        flipX = false,
+      } = options;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = blendMode;
+      ctx.translate(dx + (flipX ? dw : 0), dy);
+      ctx.scale(flipX ? -1 : 1, 1);
+      ctx.drawImage(img, 0, 0, dw, dh);
       ctx.restore();
     }
 
@@ -475,6 +503,77 @@
       [1, 2, 3, 4, 5, 7, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 54]
     );
 
+    const WALKER_WALK_FRAME_IDS = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 32];
+    const WALKER_DEATH_1_FRAME_IDS = [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 31, 34, 37, 39];
+    const WALKER_DEATH_2_FRAME_IDS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 31];
+    const WALKER_DEATH_EXPLOSION_FRAME_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    const WALKER_WALK_FPS = 12;
+    const WALKER_DEATH_FPS = 20;
+    const WALKER_EXPLOSION_DEATH_FPS = 18;
+    const WALKER_SPRITE_HEIGHT = 100;
+    const WALKER_SPRITE_PIVOT = { x: 0.52, y: 0.92 };
+
+    const walkerSequences = {
+      walkLeft: loadFrameSequence(
+        ASSETS.enemies.woodwalker.walkLeft,
+        'Walking left_',
+        WALKER_WALK_FRAME_IDS
+      ),
+      walkTurn: loadFrameSequence(
+        ASSETS.enemies.woodwalker.walkTurn,
+        'Enemy Walking Turning_',
+        WALKER_WALK_FRAME_IDS
+      ),
+      walkFront: loadFrameSequence(
+        ASSETS.enemies.woodwalker.walkFront,
+        'Enemy Walking Front_',
+        WALKER_WALK_FRAME_IDS
+      ),
+      death1: loadFrameSequence(
+        ASSETS.enemies.woodwalker.death1,
+        'Death Anim_',
+        WALKER_DEATH_1_FRAME_IDS
+      ),
+      death2: loadFrameSequence(
+        ASSETS.enemies.woodwalker.death2,
+        'Death Anim 2_',
+        WALKER_DEATH_2_FRAME_IDS
+      ),
+      deathExplosion: loadFrameSequence(
+        ASSETS.enemies.woodwalker.deathExplosion,
+        'Death Anim 3_',
+        WALKER_DEATH_EXPLOSION_FRAME_IDS
+      ),
+    };
+
+    function getEnemyWalkSequence(enemy) {
+      if (enemy.type !== 'walker') return null;
+      if (enemy.facing === 'turnLeft' || enemy.facing === 'turnRight') return walkerSequences.walkTurn;
+      if (enemy.facing === 'left' || enemy.facing === 'right') return walkerSequences.walkLeft;
+      return walkerSequences.walkFront;
+    }
+
+    function getEnemyWalkFlipX(enemy) {
+      return enemy.facing === 'right' || enemy.facing === 'turnRight';
+    }
+
+    function getEnemyDeathSequence(enemy) {
+      if (enemy.type !== 'walker') return null;
+      if (enemy.deathAnimName === 'explosion') return walkerSequences.deathExplosion;
+      return enemy.deathAnimName === 'death2' ? walkerSequences.death2 : walkerSequences.death1;
+    }
+
+    function getEnemyDeathFlipX(enemy) {
+      return enemy.type === 'walker' && (enemy.deathFacing === 'right' || enemy.deathFacing === 'turnRight');
+    }
+
+    function getWalkerDeathDuration(cause, sequenceName) {
+      if (cause === 'explosion' || sequenceName === 'explosion') {
+        return walkerSequences.deathExplosion.length / WALKER_EXPLOSION_DEATH_FPS;
+      }
+      return (sequenceName === 'death2' ? walkerSequences.death2.length : walkerSequences.death1.length) / WALKER_DEATH_FPS;
+    }
+
     function getSheetFrameRect(sheet, frameIndex) {
       const totalFrames = sheet.cols * sheet.rows;
       const clampedIndex = ((frameIndex % totalFrames) + totalFrames) % totalFrames;
@@ -557,6 +656,18 @@
       return {
         x: screenX - width * TURRET_PIVOT.x,
         y: screenY - height * TURRET_PIVOT.y,
+        width,
+        height,
+      };
+    }
+
+    function getPivotedSequenceRect(screenX, screenY, frames, height, pivot) {
+      const sample = frames?.find(img => img?.naturalWidth && img?.naturalHeight);
+      const aspect = sample ? sample.naturalWidth / sample.naturalHeight : 1;
+      const width = height * aspect;
+      return {
+        x: screenX - width * pivot.x,
+        y: screenY - height * pivot.y,
         width,
         height,
       };
@@ -1133,6 +1244,7 @@
       state.nextWallChainId = 1;
       state.cannonGroundHitCounter = 0;
       state.nextCannonGroundHitAt = 3;
+      state.nextEnemyDeathVariant = 0;
       state.camera = { x: 1040, y: 470, zoom: 0.76, targetZoom: 0.76 };
       ui.waveBadge.classList.remove('flash');
       updateHUD();
@@ -1690,11 +1802,24 @@
       if (!enemy || enemy.mode === 'dying' || enemy.mode === 'attacking') return;
       createExplosion(enemy.x, enemy.y, escaped ? '#f87171' : '#fb923c');
       if (!escaped) state.points += enemy.reward;
+      const deathAnimName = escaped
+        ? null
+        : cause === 'explosion'
+          ? 'explosion'
+          : (state.nextEnemyDeathVariant++ % 2 === 0 ? 'death1' : 'death2');
+      const deathDuration = escaped
+        ? 0.34
+        : enemy.type === 'walker'
+          ? getWalkerDeathDuration(cause, deathAnimName)
+          : 0.44;
       enemy.mode = escaped ? 'attacking' : 'dying';
-      enemy.stateTimer = escaped ? 0.34 : 0.44;
+      enemy.stateTimer = deathDuration;
       enemy.pendingEscape = escaped;
       enemy.deathCause = cause;
       enemy.speed = 0;
+      enemy.deathAnimName = escaped ? null : deathAnimName;
+      enemy.deathFacing = enemy.facing || 'down';
+      enemy.deathDuration = deathDuration;
       state.aliveEnemies = Math.max(0, state.aliveEnemies - 1);
       if (escaped) {
         state.lives -= 1;
@@ -1752,6 +1877,9 @@
         attackCooldown: 0,
         blockedWallId: null,
         detourPoint: null,
+        deathAnimName: null,
+        deathFacing: 'down',
+        deathDuration: 0,
       };
     }
 
@@ -1780,6 +1908,9 @@
           attackCooldown: 0,
           blockedWallId: null,
           detourPoint: null,
+          deathAnimName: null,
+          deathFacing: 'down',
+          deathDuration: 0,
         };
       }
       return createEnemy(pathChoice, waveScale);
@@ -1823,7 +1954,9 @@
     }
 
     function updateEnemyFacing(enemy) {
-      if (Math.abs(enemy.moveX) > Math.abs(enemy.moveY) * 0.72) {
+      if (enemy.moveY > 0.35 && Math.abs(enemy.moveX) > 0.22) {
+        enemy.facing = enemy.moveX < 0 ? 'turnLeft' : 'turnRight';
+      } else if (Math.abs(enemy.moveX) > Math.abs(enemy.moveY) * 0.72) {
         enemy.facing = enemy.moveX < 0 ? 'left' : 'right';
       } else {
         enemy.facing = 'down';
@@ -2689,7 +2822,49 @@ function drawGoal() {
       }
     }
 
-    function drawEnemyHolder(p, e) {
+    function drawWalkerEnemy(p, e) {
+      const isDying = e.mode === 'dying';
+      const bob = isDying ? 0 : Math.sin(e.animTime * 8) * 1.4 * state.camera.zoom;
+      const frames = isDying ? getEnemyDeathSequence(e) : getEnemyWalkSequence(e);
+      if (!frames?.length) return;
+      const frameIndex = isDying
+        ? Math.min(
+            Math.max(0, frames.length - 1),
+            Math.floor(((e.deathDuration || 0) - e.stateTimer) * (e.deathAnimName === 'explosion' ? WALKER_EXPLOSION_DEATH_FPS : WALKER_DEATH_FPS))
+          )
+        : Math.floor(e.animTime * WALKER_WALK_FPS) % frames.length;
+      const flipX = isDying ? getEnemyDeathFlipX(e) : getEnemyWalkFlipX(e);
+      const rect = getPivotedSequenceRect(
+        p.x,
+        p.y + bob,
+        frames,
+        WALKER_SPRITE_HEIGHT * state.camera.zoom,
+        WALKER_SPRITE_PIVOT
+      );
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(15,23,42,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(
+        p.x,
+        p.y + 4 * state.camera.zoom,
+        11 * state.camera.zoom,
+        4 * state.camera.zoom,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      if (e.mode === 'hit') {
+        drawSequenceFrameExt(frames, frameIndex, rect.x, rect.y, rect.width, rect.height, { alpha: 0.82, flipX });
+        drawSequenceFrameExt(frames, frameIndex, rect.x, rect.y, rect.width, rect.height, { alpha: 0.35, flipX, blendMode: 'screen' });
+      } else {
+        drawSequenceFrameExt(frames, frameIndex, rect.x, rect.y, rect.width, rect.height, { flipX });
+      }
+      ctx.restore();
+    }
+
+    function drawEnemyPlaceholder(p, e) {
       const stormer = e.type === 'stormer';
       const bodyW = (stormer ? 20 : 22) * state.camera.zoom;
       const bodyH = (stormer ? 24 : 28) * state.camera.zoom;
@@ -2743,6 +2918,14 @@ function drawGoal() {
       ctx.restore();
     }
 
+    function drawEnemyHolder(p, e) {
+      if (e.type === 'walker') {
+        drawWalkerEnemy(p, e);
+        return;
+      }
+      drawEnemyPlaceholder(p, e);
+    }
+
     function drawEnemies() {
       for (const ghost of state.enemyGhosts) {
         const p = worldToScreen(ghost.x, ghost.y);
@@ -2780,10 +2963,13 @@ function drawGoal() {
         ctx.save();
         const barW = 34 * state.camera.zoom;
         const hpPct = Math.max(0, e.hp / e.maxHp);
+        const barY = e.type === 'walker'
+          ? p.y - 70 * state.camera.zoom
+          : p.y - 26 * state.camera.zoom;
         ctx.fillStyle = '#111827';
-        ctx.fillRect(p.x - barW / 2, p.y - 26 * state.camera.zoom, barW, 5 * state.camera.zoom);
+        ctx.fillRect(p.x - barW / 2, barY, barW, 5 * state.camera.zoom);
         ctx.fillStyle = '#22c55e';
-        ctx.fillRect(p.x - barW / 2, p.y - 26 * state.camera.zoom, barW * hpPct, 5 * state.camera.zoom);
+        ctx.fillRect(p.x - barW / 2, barY, barW * hpPct, 5 * state.camera.zoom);
         ctx.restore();
       }
     }
