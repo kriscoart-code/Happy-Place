@@ -7,14 +7,19 @@
 
     const ui = {
       points: document.getElementById('points'),
+      pointsHudImg: document.getElementById('pointsHudImg'),
       lives: document.getElementById('lives'),
+      livesHudImg: document.getElementById('livesHudImg'),
       wave: document.getElementById('wave'),
       waveBadge: document.getElementById('waveBadge'),
       aliveEnemies: document.getElementById('aliveEnemies'),
+      aliveHudImg: document.getElementById('aliveHudImg'),
       earlyChip: document.getElementById('earlyChip'),
       earlyBonus: document.getElementById('earlyBonus'),
+      playWaveImg: document.getElementById('playWaveImg'),
       defenseMenu: document.getElementById('defenseMenu'),
       defenseToggle: document.getElementById('defenseToggle'),
+      defenseToggleImg: document.getElementById('defenseToggleImg'),
       buyMinigun: document.getElementById('buyMinigun'),
       buyMinigunMk2: document.getElementById('buyMinigunMk2'),
       buyCannon: document.getElementById('buyCannon'),
@@ -258,6 +263,7 @@
       uiHover: false,
       lastWavePulse: 0,
       radialMenuOpen: false,
+      defenseToggleVisualState: 'closed',
       upgradeMenuOpen: false,
       selectionUiBounds: null,
       towerRadius: 24,
@@ -266,6 +272,12 @@
       cannonGroundHitCounter: 0,
       nextCannonGroundHitAt: 3,
       nextEnemyDeathVariant: 0,
+      hudValueCache: { points: null, lives: null, aliveEnemies: null },
+      hudAnimState: {
+        points: { active: false, startedAt: 0 },
+        lives: { active: false, startedAt: 0 },
+        aliveEnemies: { active: false, startedAt: 0 },
+      },
     };
 
     const bgImage = new Image();
@@ -300,10 +312,25 @@
         fireEndLeftSmoke: './assets/mk2/fire-end-left-smoke',
         returnLeftAfterFiring: './assets/mk2/return-left-after-firing',
       },
+      defenses: {
+        flamethrower: './assets/defenses/flamethrower',
+        mine: './assets/defenses',
+      },
       effects: {
         cannonHit: './assets/effects/cannon-hit',
         bulletHitSingle: './assets/effects/bullet-hit-single',
         bulletHits: './assets/effects/bullet-hits',
+        flameProjectile: './assets/effects/flame-projectile',
+      },
+      ui: {
+        playStart: './assets/ui/Play Button UI.png',
+        playEarly: './assets/ui/Early Wave Button UI.png',
+        addClosed: './assets/ui/Add Button UI_00001.png',
+        addTransition: './assets/ui/Add Button UI_00002.png',
+        addOpen: './assets/ui/Add Button UI_00003.png',
+        livesBase: './assets/ui',
+        pointsBase: './assets/ui',
+        enemiesBase: './assets/ui',
       },
       enemies: {
         woodwalker: {
@@ -503,6 +530,42 @@
       [1, 2, 3, 4, 5, 7, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 54]
     );
 
+    const flamethrowerFrames = loadFrameSequence(
+      ASSETS.defenses.flamethrower,
+      'FLAME THROWER_',
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    );
+
+    const flameProjectileFrames = loadFrameSequence(
+      ASSETS.effects.flameProjectile,
+      'Flame Projectile_',
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    );
+
+    const mineFrames = loadFrameSequence(
+      ASSETS.defenses.mine,
+      'MINE_',
+      [0, 1, 2, 3, 4, 5, 6, 7]
+    );
+
+    const livesHudFrames = loadFrameSequence(
+      ASSETS.ui.livesBase,
+      'UI Bar Lives_',
+      [1, 2, 3, 4, 5]
+    );
+
+    const pointsHudFrames = loadFrameSequence(
+      ASSETS.ui.pointsBase,
+      'Points Menu UI_',
+      [1, 2, 3, 4, 5, 6, 7, 8]
+    );
+
+    const enemiesHudFrames = loadFrameSequence(
+      ASSETS.ui.enemiesBase,
+      'Enemies Menu UI_',
+      [1, 2, 3, 4, 5, 6, 7, 8]
+    );
+
     const WALKER_WALK_FRAME_IDS = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 32];
     const WALKER_DEATH_1_FRAME_IDS = [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 31, 34, 37, 39];
     const WALKER_DEATH_2_FRAME_IDS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 31];
@@ -510,8 +573,8 @@
     const WALKER_WALK_FPS = 12;
     const WALKER_DEATH_FPS = 20;
     const WALKER_EXPLOSION_DEATH_FPS = 18;
-    const WALKER_SPRITE_HEIGHT = 100;
-    const WALKER_SPRITE_PIVOT = { x: 0.52, y: 0.92 };
+    const WALKER_SPRITE_HEIGHT = 56;
+    const WALKER_SPRITE_PIVOT = { x: 0.52, y: 0.98 };
 
     const walkerSequences = {
       walkLeft: loadFrameSequence(
@@ -677,6 +740,11 @@
       return frames[Math.floor(time * fps) % frames.length];
     }
 
+    function getSequenceAspect(frames) {
+      const sample = frames?.find(img => img?.naturalWidth && img?.naturalHeight);
+      return sample ? sample.naturalWidth / sample.naturalHeight : 1;
+    }
+
     function getMinigunAimBand(tower) {
       const progress = getFrontHemisphereAimProgress(tower.facing || Math.PI);
       if (progress <= 0.26) return 'left';
@@ -687,6 +755,142 @@
     function getMappedFrame(frames, progress) {
       const idx = Math.min(frames.length - 1, Math.max(0, Math.round(progress * (frames.length - 1))));
       return frames[idx];
+    }
+
+    function getFlamethrowerFrameIndex(angle = Math.PI / 2) {
+      const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const offset = (normalized + Math.PI * 0.25) % (Math.PI * 2);
+      const progress = 1 - offset / (Math.PI * 2);
+      const baseIndex = Math.min(
+        flamethrowerFrames.length - 1,
+        Math.max(0, Math.round(progress * (flamethrowerFrames.length - 1)))
+      );
+      return (baseIndex + flamethrowerFrames.length - 1) % flamethrowerFrames.length;
+    }
+
+    function drawFlamethrowerAt(screenX, screenY, angle, alpha = 1) {
+      const frameIndex = getFlamethrowerFrameIndex(angle);
+      const rect = getPivotedSequenceRect(
+        screenX,
+        screenY + 11 * state.camera.zoom,
+        flamethrowerFrames,
+        94 * state.camera.zoom,
+        { x: 0.5, y: 0.82 }
+      );
+      drawSequenceFrameExt(
+        flamethrowerFrames,
+        frameIndex,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        { alpha }
+      );
+    }
+
+    function drawSequenceFrameRotatedPivoted(frames, frameIndex, cx, cy, dw, dh, rotation, pivot, options = {}) {
+      const img = frames[Math.max(0, Math.min(frames.length - 1, frameIndex))];
+      if (!img?.complete || !img.naturalWidth) return;
+      const {
+        alpha = 1,
+        blendMode = 'source-over',
+        flipX = false,
+      } = options;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rotation);
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = blendMode;
+      ctx.scale(flipX ? -1 : 1, 1);
+      ctx.drawImage(img, flipX ? -(dw * (1 - pivot.x)) : -dw * pivot.x, -dh * pivot.y, dw, dh);
+      ctx.restore();
+    }
+
+    const FLAME_PROJECTILE_START_END = 7;
+    const FLAME_PROJECTILE_LOOP_START = 8;
+    const FLAME_PROJECTILE_LOOP_END = 13;
+    const FLAME_PROJECTILE_END_START = 14;
+    const FLAME_PROJECTILE_FINAL_FRAME = 16;
+    const FLAME_PROJECTILE_FPS = 26;
+    const FLAME_PROJECTILE_FINAL_HOLD = 0.12;
+
+    function getFlamethrowerMuzzleWorld(tower) {
+      const facing = tower.facing || 0;
+      return {
+        x: tower.x + Math.cos(facing) * 14,
+        y: tower.y - 5 + Math.sin(facing) * 14,
+      };
+    }
+
+    function getFlameProjectileEffect(towerId) {
+      return state.effects.find(fx => fx.kind === 'flameProjectile' && fx.towerId === towerId) || null;
+    }
+
+    function syncFlameProjectileEffect(tower, range) {
+      const facing = tower.facing || 0;
+      const muzzle = getFlamethrowerMuzzleWorld(tower);
+      let fx = getFlameProjectileEffect(tower.id);
+      if (!fx) {
+        fx = {
+          kind: 'flameProjectile',
+          towerId: tower.id,
+          x: muzzle.x,
+          y: muzzle.y,
+          angle: facing,
+          range,
+          phase: 'start',
+          frameFloat: 0,
+          frameIndex: 0,
+          finalHold: 0,
+          age: 0,
+          maxAge: 999999,
+        };
+        state.effects.push(fx);
+        return fx;
+      }
+      fx.x = muzzle.x;
+      fx.y = muzzle.y;
+      fx.angle = facing;
+      fx.range = range;
+      if (fx.phase === 'ending' || fx.phase === 'endHold') {
+        fx.phase = 'start';
+        fx.frameFloat = 0;
+        fx.frameIndex = 0;
+        fx.finalHold = 0;
+      }
+      return fx;
+    }
+
+    function getMineFrameIndex(time = 0, held = false) {
+      if (held) return 0;
+      if (time < 0.88) {
+        return Math.min(mineFrames.length - 1, Math.floor((time / 0.88) * mineFrames.length));
+      }
+      const loopTime = time - 0.88;
+      if (loopTime < 1.0) return 4;
+      const pulseFrames = [5, 6, 7];
+      const pulseIndex = Math.floor(((loopTime - 1.0) / 0.18) % pulseFrames.length);
+      return pulseFrames[Math.max(0, Math.min(pulseFrames.length - 1, pulseIndex))];
+    }
+
+    function drawMineAt(screenX, screenY, time = 0, alpha = 1, held = false) {
+      const frameIndex = getMineFrameIndex(time, held);
+      const rect = getPivotedSequenceRect(
+        screenX,
+        screenY + 3 * state.camera.zoom,
+        mineFrames,
+        48 * state.camera.zoom,
+        { x: 0.5, y: 0.5 }
+      );
+      drawSequenceFrameExt(
+        mineFrames,
+        frameIndex,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        { alpha }
+      );
     }
 
     function getMinigunSpriteState(tower) {
@@ -998,15 +1202,84 @@
       showToast._t = setTimeout(() => ui.toast.classList.remove('show'), 1600);
     }
 
+    const HUD_BAR_FRAME_DURATION_MS = 70;
+
+    function triggerHudBarAnimation(name) {
+      const anim = state.hudAnimState[name];
+      if (!anim) return;
+      anim.active = true;
+      anim.startedAt = performance.now();
+    }
+
+    function getHudBarFrameIndex(name, frames) {
+      const anim = state.hudAnimState[name];
+      if (!anim || !frames?.length) return 0;
+      const restIndex = frames.length - 1;
+      if (!anim.active) return restIndex;
+      const elapsed = performance.now() - anim.startedAt;
+      const frameIndex = Math.min(restIndex, Math.floor(elapsed / HUD_BAR_FRAME_DURATION_MS));
+      if (frameIndex >= restIndex) {
+        anim.active = false;
+        return restIndex;
+      }
+      return frameIndex;
+    }
+
+    function syncHudBarImage(name, imgEl, frames) {
+      if (!imgEl || !frames?.length) return;
+      const frame = frames[getHudBarFrameIndex(name, frames)];
+      if (frame?.src && imgEl.src !== frame.src) imgEl.src = frame.src;
+    }
+
+    function syncPlayWaveButtonVisual() {
+      ui.playWaveImg.src = state.currentWaveRunning ? ASSETS.ui.playEarly : ASSETS.ui.playStart;
+      ui.playWaveBtn.setAttribute('aria-label', state.currentWaveRunning ? 'Start next wave early' : 'Start wave');
+      ui.playWaveBtn.title = state.currentWaveRunning ? 'Start next wave early' : 'Start wave';
+    }
+
+    function syncDefenseToggleVisual(force = false) {
+      const targetState = state.radialMenuOpen ? 'open' : 'closed';
+      const transitioning = state.defenseToggleVisualState === 'opening' || state.defenseToggleVisualState === 'closing';
+      if (force || !transitioning) {
+        state.defenseToggleVisualState = targetState;
+        ui.defenseToggleImg.src = targetState === 'open' ? ASSETS.ui.addOpen : ASSETS.ui.addClosed;
+        ui.defenseToggle.setAttribute('aria-label', targetState === 'open' ? 'Close defenses' : 'Open defenses');
+        ui.defenseToggle.title = targetState === 'open' ? 'Close defenses' : 'Open defenses';
+      }
+    }
+
+    function animateDefenseToggleVisual(nextOpen) {
+      clearTimeout(animateDefenseToggleVisual._t);
+      state.defenseToggleVisualState = nextOpen ? 'opening' : 'closing';
+      ui.defenseToggleImg.src = ASSETS.ui.addTransition;
+      ui.defenseToggle.setAttribute('aria-label', nextOpen ? 'Close defenses' : 'Open defenses');
+      ui.defenseToggle.title = nextOpen ? 'Close defenses' : 'Open defenses';
+      animateDefenseToggleVisual._t = setTimeout(() => {
+        state.defenseToggleVisualState = nextOpen ? 'open' : 'closed';
+        ui.defenseToggleImg.src = nextOpen ? ASSETS.ui.addOpen : ASSETS.ui.addClosed;
+      }, 130);
+    }
+
     function syncDefenseMenu() {
       ui.defenseMenu.classList.toggle('expanded', state.radialMenuOpen);
-      ui.defenseToggle.textContent = state.radialMenuOpen ? '×' : '+';
+      syncDefenseToggleVisual();
     }
 
     function pulseWaveBadge() {
       ui.waveBadge.classList.add('flash');
       clearTimeout(pulseWaveBadge._t);
       pulseWaveBadge._t = setTimeout(() => ui.waveBadge.classList.remove('flash'), 380);
+    }
+
+    function showEarlyBonus(amount) {
+      ui.earlyBonus.textContent = `+${Math.floor(amount)}`;
+      ui.earlyChip.classList.remove('show');
+      clearTimeout(showEarlyBonus._t);
+      void ui.earlyChip.offsetWidth;
+      ui.earlyChip.classList.add('show');
+      showEarlyBonus._t = setTimeout(() => {
+        ui.earlyChip.classList.remove('show');
+      }, 920);
     }
 
     function handlePlayWaveAction() {
@@ -1019,12 +1292,23 @@
 
     function updateHUD() {
       const buildBusy = !!state.heldTower || !!state.wallDraft;
-      ui.points.textContent = Math.floor(state.points);
-      ui.lives.textContent = state.lives;
+      const pointsValue = Math.floor(state.points);
+      const livesValue = state.lives;
+      const aliveValue = state.aliveEnemies;
+      if (state.hudValueCache.points !== null && state.hudValueCache.points !== pointsValue) triggerHudBarAnimation('points');
+      if (state.hudValueCache.lives !== null && state.hudValueCache.lives !== livesValue) triggerHudBarAnimation('lives');
+      if (state.hudValueCache.aliveEnemies !== null && state.hudValueCache.aliveEnemies !== aliveValue) triggerHudBarAnimation('aliveEnemies');
+      state.hudValueCache.points = pointsValue;
+      state.hudValueCache.lives = livesValue;
+      state.hudValueCache.aliveEnemies = aliveValue;
+      ui.points.textContent = pointsValue;
+      ui.lives.textContent = livesValue;
       ui.wave.textContent = state.wave;
-      ui.aliveEnemies.textContent = state.aliveEnemies;
+      ui.aliveEnemies.textContent = aliveValue;
+      syncHudBarImage('points', ui.pointsHudImg, pointsHudFrames);
+      syncHudBarImage('lives', ui.livesHudImg, livesHudFrames);
+      syncHudBarImage('aliveEnemies', ui.aliveHudImg, enemiesHudFrames);
       ui.earlyBonus.textContent = `+${Math.floor(state.lastEarlyBonus)}`;
-      ui.earlyChip.style.display = state.lastEarlyBonus > 0 ? '' : 'none';
       ui.buyMinigun.disabled = state.points < towerDefs.minigun.cost || buildBusy;
       ui.buyMinigunMk2.disabled = state.points < towerDefs.minigunMk2.cost || buildBusy;
       ui.buyCannon.disabled = state.points < towerDefs.cannon.cost || buildBusy;
@@ -1032,7 +1316,7 @@
       ui.buyMine.disabled = state.points < towerDefs.mine.cost || buildBusy;
       ui.buyPlaceholder.disabled = state.gameOver || buildBusy;
       ui.playWaveBtn.disabled = state.gameOver;
-      ui.playWaveBtn.textContent = state.currentWaveRunning ? '≫' : '▶';
+      syncPlayWaveButtonVisual();
       syncDefenseMenu();
       updateSelectionPanel();
     }
@@ -1048,6 +1332,12 @@
         + getTowerUpgradeLevel(tower, 'damage');
     }
 
+    function getTotalUpgradeLevel(tower) {
+      return getTowerUpgradeLevel(tower, 'range')
+        + getTowerUpgradeLevel(tower, 'rate')
+        + getTowerUpgradeLevel(tower, 'damage');
+    }
+
     function getUpgradeUnlockWave(level) {
       if (level < 5) return null;
       if (level < 10) return UPGRADE_LOCK_WAVES[0];
@@ -1059,15 +1349,18 @@
     function getUpgradeCategoryCost(tower, stat) {
       const def = towerDefs[tower.type];
       const level = getTowerUpgradeLevel(tower, stat);
-      const mult = stat === 'range' ? 1.05 : stat === 'rate' ? 1.18 : 1.32;
+      const totalLevel = getTotalUpgradeLevel(tower);
+      const mult = stat === 'range' ? 1.08 : stat === 'rate' ? 1.22 : 1.36;
       const tierWeight = level < 5
-        ? 1.75 + level * 0.6
+        ? 1.9 + level * 0.9
         : level < 10
-          ? 5.5 + (level - 5) * 0.95
+          ? 6.6 + (level - 5) * 1.6
           : level < 15
-            ? 10.5 + (level - 10) * 1.2
-            : 17 + (level - 15) * 1.5;
-      return Math.round(def.upgradeBase * mult * tierWeight);
+            ? 14.6 + (level - 10) * 2.4
+            : 26.6 + (level - 15) * 3.4;
+      const globalPressure = 1 + totalLevel * 0.11 + Math.max(0, totalLevel - 6) * 0.08;
+      const escalation = 1 + level * 0.18 + level * level * 0.03;
+      return Math.round(def.upgradeBase * mult * tierWeight * globalPressure * escalation);
     }
 
     function getUpgradeCategoryInfo(tower, stat) {
@@ -1203,7 +1496,6 @@
           : option.info.locked
             ? `Unlocks at wave ${option.info.unlockWave}`
             : `${option.label} upgrade (${option.info.cost})`;
-        option.btn.disabled = option.info.maxed || option.info.locked;
         option.btn.classList.toggle('show', state.upgradeMenuOpen);
       }
     }
@@ -1245,8 +1537,15 @@
       state.cannonGroundHitCounter = 0;
       state.nextCannonGroundHitAt = 3;
       state.nextEnemyDeathVariant = 0;
+      state.hudValueCache = { points: null, lives: null, aliveEnemies: null };
+      state.hudAnimState = {
+        points: { active: false, startedAt: 0 },
+        lives: { active: false, startedAt: 0 },
+        aliveEnemies: { active: false, startedAt: 0 },
+      };
       state.camera = { x: 1040, y: 470, zoom: 0.76, targetZoom: 0.76 };
       ui.waveBadge.classList.remove('flash');
+      ui.earlyChip.classList.remove('show');
       updateHUD();
       showToast('Run reset');
     }
@@ -1626,6 +1925,8 @@
         facing: 0,
         armed: type === 'mine' ? 0.45 : 0,
         animTime: 0,
+        mineAnimTime: 0,
+        flameVisualTimer: 0,
         aimFrame: TURRET_AIM_FRAMES[Math.floor(TURRET_AIM_FRAMES.length / 2)],
         spriteState: turretSpriteTypes.has(type) ? 'place' : 'idle',
         flamePatchCooldown: 0,
@@ -1736,6 +2037,7 @@
       const bonus = Math.floor(36 + activeThreats * 12);
       state.points += bonus;
       state.lastEarlyBonus += bonus;
+      showEarlyBonus(bonus);
       state.wave += 1;
       const enemyCount = 6 + state.wave * 3;
       const nextDelay = Math.min(0.45, Math.max(0.08, state.spawnQueue.length ? Math.min(...state.spawnQueue.map(item => item.delay)) : 0.12));
@@ -2103,18 +2405,9 @@
           applyBurn(enemy, stats.damage, stats.burnTime);
         }
       }
+      syncFlameProjectileEffect(tower, range);
+      tower.flameVisualTimer = Math.max(tower.flameVisualTimer || 0, stats.fireRate + 0.08);
       if (hitAny) {
-        state.effects.push({
-          kind: 'flameCone',
-          x: tower.x,
-          y: tower.y,
-          angle: facing,
-          spread: stats.flameAngle,
-          range,
-          age: 0,
-          maxAge: 0.18,
-          color: '#fb923c',
-        });
         if (tower.flamePatchCooldown <= 0) {
           spawnGroundFlame(tower);
           tower.flamePatchCooldown = 0.16;
@@ -2126,7 +2419,9 @@
       for (const tower of state.towers) {
         tower.cooldown -= dt;
         tower.armed = Math.max(0, (tower.armed || 0) - dt);
+        tower.mineAnimTime = (tower.mineAnimTime || 0) + dt;
         tower.flamePatchCooldown = Math.max(0, (tower.flamePatchCooldown || 0) - dt);
+        tower.flameVisualTimer = Math.max(0, (tower.flameVisualTimer || 0) - dt);
         if (turretSpriteTypes.has(tower.type)) {
           tower.animTime = (tower.animTime || 0) + dt;
           if (tower.spriteState === 'place') {
@@ -2354,6 +2649,63 @@
       }
       for (let i = state.effects.length - 1; i >= 0; i--) {
         const fx = state.effects[i];
+        if (fx.kind === 'flameProjectile') {
+          const tower = state.towers.find(candidate => candidate.id === fx.towerId);
+          if (!tower) {
+            state.effects.splice(i, 1);
+            continue;
+          }
+          const muzzle = getFlamethrowerMuzzleWorld(tower);
+          fx.x = muzzle.x;
+          fx.y = muzzle.y;
+          fx.angle = tower.facing || 0;
+          fx.range = getTowerStats(tower).range;
+
+          if (tower.flameVisualTimer > 0) {
+            if (fx.phase === 'ending' || fx.phase === 'endHold') {
+              fx.phase = 'start';
+              fx.frameFloat = 0;
+              fx.frameIndex = 0;
+              fx.finalHold = 0;
+            }
+            if (fx.phase === 'start') {
+              fx.frameFloat += dt * FLAME_PROJECTILE_FPS;
+              if (fx.frameFloat >= FLAME_PROJECTILE_START_END) {
+                fx.phase = 'loop';
+                fx.frameFloat = FLAME_PROJECTILE_LOOP_START;
+                fx.frameIndex = FLAME_PROJECTILE_LOOP_START;
+              } else {
+                fx.frameIndex = Math.min(FLAME_PROJECTILE_START_END, Math.floor(fx.frameFloat));
+              }
+            } else {
+              fx.phase = 'loop';
+              fx.frameFloat += dt * FLAME_PROJECTILE_FPS;
+              const loopLength = FLAME_PROJECTILE_LOOP_END - FLAME_PROJECTILE_LOOP_START + 1;
+              const offset = ((fx.frameFloat - FLAME_PROJECTILE_LOOP_START) % loopLength + loopLength) % loopLength;
+              fx.frameIndex = FLAME_PROJECTILE_LOOP_START + Math.floor(offset);
+            }
+          } else if (fx.phase !== 'endHold') {
+            if (fx.phase !== 'ending') {
+              fx.phase = 'ending';
+              fx.frameFloat = FLAME_PROJECTILE_END_START;
+              fx.frameIndex = FLAME_PROJECTILE_END_START;
+            } else {
+              fx.frameFloat += dt * FLAME_PROJECTILE_FPS;
+              fx.frameIndex = Math.min(FLAME_PROJECTILE_FINAL_FRAME, Math.floor(fx.frameFloat));
+              if (fx.frameIndex >= FLAME_PROJECTILE_FINAL_FRAME) {
+                fx.phase = 'endHold';
+                fx.frameIndex = FLAME_PROJECTILE_FINAL_FRAME;
+                fx.finalHold = 0;
+              }
+            }
+          } else {
+            fx.finalHold += dt;
+            if (fx.finalHold >= FLAME_PROJECTILE_FINAL_HOLD) {
+              state.effects.splice(i, 1);
+            }
+          }
+          continue;
+        }
         fx.age += dt;
         if (fx.age >= fx.maxAge) state.effects.splice(i, 1);
       }
@@ -2637,6 +2989,8 @@ function drawGoal() {
         const p = worldToScreen(tower.x, tower.y);
         const selected = tower.id === state.selectedTowerId;
         const def = towerDefs[tower.type];
+        const showTag = selected || !!state.heldTower;
+        const towerLabel = tower.type === 'minigun' ? 'MG' : tower.type === 'minigunMk2' ? 'M2' : tower.type === 'cannon' ? 'CN' : tower.type === 'flamethrower' ? 'FL' : 'MN';
 
         ctx.save();
         if (selected) {
@@ -2661,18 +3015,24 @@ function drawGoal() {
           ctx.globalAlpha = 1;
         }
 
+        if (selected) {
+          const highlightRadius = (tower.type === 'mine' ? state.mineRadius + 8 : state.towerRadius + 10) * state.camera.zoom;
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.strokeStyle = 'rgba(255,236,179,0.92)';
+          ctx.lineWidth = 4 * state.camera.zoom;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + 2 * state.camera.zoom, highlightRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(245,158,11,0.62)';
+          ctx.lineWidth = 2 * state.camera.zoom;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + 2 * state.camera.zoom, highlightRadius + 4 * state.camera.zoom, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
         ctx.beginPath();
         if (tower.type === 'mine') {
-          ctx.arc(p.x, p.y, state.mineRadius * state.camera.zoom, 0, Math.PI * 2);
-          ctx.fillStyle = tower.armed > 0 ? '#ca8a04' : def.color;
-          ctx.fill();
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#111827';
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 6 * state.camera.zoom, 0, Math.PI * 2);
-          ctx.fillStyle = tower.armed > 0 ? '#111827' : '#ef4444';
-          ctx.fill();
+          drawMineAt(p.x, p.y, tower.mineAnimTime || 0);
         } else if (tower.type === 'minigunMk2') {
           const sprite = getMk2SequenceRenderState(tower);
           const rect = getSequenceSpriteRect(p.x, p.y, sprite.frames);
@@ -2680,6 +3040,8 @@ function drawGoal() {
         } else if (tower.type === 'minigun') {
           const sprite = getMinigunSpriteState(tower);
           drawTowerSheetAt(p.x, p.y, sprite.sheet, sprite.frameIndex);
+        } else if (tower.type === 'flamethrower') {
+          drawFlamethrowerAt(p.x, p.y, tower.facing || Math.PI / 2);
         } else if (turretSpriteTypes.has(tower.type)) {
           drawTurretSpriteAt(p.x, p.y, getTurretFrameIndex(tower));
         } else {
@@ -2691,11 +3053,13 @@ function drawGoal() {
           ctx.stroke();
         }
 
-        if (!turretSpriteTypes.has(tower.type)) {
+        if (showTag) {
           ctx.fillStyle = '#ffffff';
           ctx.font = `bold ${12 * state.camera.zoom}px Arial`;
           ctx.textAlign = 'center';
-          const towerLabel = tower.type === 'minigun' ? 'MG' : tower.type === 'minigunMk2' ? 'M2' : tower.type === 'cannon' ? 'CN' : tower.type === 'flamethrower' ? 'FL' : 'MN';
+          ctx.strokeStyle = 'rgba(17,24,39,0.82)';
+          ctx.lineWidth = 3 * state.camera.zoom;
+          ctx.strokeText(towerLabel, p.x, p.y + 4 * state.camera.zoom);
           ctx.fillText(towerLabel, p.x, p.y + 4 * state.camera.zoom);
         }
         ctx.restore();
@@ -2735,6 +3099,10 @@ function drawGoal() {
       } else if (state.heldTower.type === 'minigunMk2') {
         const rect = getSequenceSpriteRect(p.x, p.y, mk2Sequences.placement);
         drawSequenceFrame(mk2Sequences.placement, 0, rect.x, rect.y, rect.width, rect.height, valid ? 0.82 : 0.42);
+      } else if (state.heldTower.type === 'flamethrower') {
+        drawFlamethrowerAt(p.x, p.y, state.heldTower.facing || Math.PI / 2, valid ? 0.82 : 0.42);
+      } else if (state.heldTower.type === 'mine') {
+        drawMineAt(p.x, p.y, 0, valid ? 0.82 : 0.42, true);
       } else {
         ctx.beginPath();
         ctx.arc(
@@ -2746,6 +3114,16 @@ function drawGoal() {
         );
         ctx.fill();
       }
+
+      const heldLabel = state.heldTower.type === 'minigun' ? 'MG' : state.heldTower.type === 'minigunMk2' ? 'M2' : state.heldTower.type === 'cannon' ? 'CN' : state.heldTower.type === 'flamethrower' ? 'FL' : 'MN';
+      ctx.globalAlpha = valid ? 0.95 : 0.58;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(17,24,39,0.82)';
+      ctx.lineWidth = 3 * state.camera.zoom;
+      ctx.font = `bold ${12 * state.camera.zoom}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.strokeText(heldLabel, p.x, p.y + 4 * state.camera.zoom);
+      ctx.fillText(heldLabel, p.x, p.y + 4 * state.camera.zoom);
       ctx.restore();
     }
 
@@ -2836,7 +3214,7 @@ function drawGoal() {
       const flipX = isDying ? getEnemyDeathFlipX(e) : getEnemyWalkFlipX(e);
       const rect = getPivotedSequenceRect(
         p.x,
-        p.y + bob,
+        p.y + bob + 8 * state.camera.zoom,
         frames,
         WALKER_SPRITE_HEIGHT * state.camera.zoom,
         WALKER_SPRITE_PIVOT
@@ -2847,9 +3225,9 @@ function drawGoal() {
       ctx.beginPath();
       ctx.ellipse(
         p.x,
-        p.y + 4 * state.camera.zoom,
-        11 * state.camera.zoom,
-        4 * state.camera.zoom,
+        p.y + 9 * state.camera.zoom,
+        8 * state.camera.zoom,
+        3.2 * state.camera.zoom,
         0,
         0,
         Math.PI * 2
@@ -2964,11 +3342,11 @@ function drawGoal() {
         const barW = 34 * state.camera.zoom;
         const hpPct = Math.max(0, e.hp / e.maxHp);
         const barY = e.type === 'walker'
-          ? p.y - 70 * state.camera.zoom
+          ? p.y - 46 * state.camera.zoom
           : p.y - 26 * state.camera.zoom;
-        ctx.fillStyle = '#111827';
+        ctx.fillStyle = 'rgba(17,24,39,0.55)';
         ctx.fillRect(p.x - barW / 2, barY, barW, 5 * state.camera.zoom);
-        ctx.fillStyle = '#22c55e';
+        ctx.fillStyle = 'rgba(34,197,94,0.76)';
         ctx.fillRect(p.x - barW / 2, barY, barW * hpPct, 5 * state.camera.zoom);
         ctx.restore();
       }
@@ -3116,14 +3494,31 @@ function drawGoal() {
           ctx.beginPath();
           ctx.arc(p.x, p.y, (6 + (1 - t) * 3) * state.camera.zoom, 0, Math.PI * 2);
           ctx.fill();
-        } else if (fx.kind === 'flameCone') {
-          ctx.globalAlpha = Math.max(0, 0.32 - t * 0.32);
-          ctx.fillStyle = '#fb923c';
+        } else if (fx.kind === 'flameProjectile') {
+          const width = fx.range * state.camera.zoom * 0.92;
+          const height = width / getSequenceAspect(flameProjectileFrames);
+          ctx.globalCompositeOperation = 'screen';
+          const glowX = p.x + Math.cos(fx.angle) * width * 0.36;
+          const glowY = p.y + Math.sin(fx.angle) * width * 0.36;
+          const glow = ctx.createRadialGradient(glowX, glowY, 0, glowX, glowY, height * 2.4);
+          glow.addColorStop(0, 'rgba(255,220,120,0.18)');
+          glow.addColorStop(0.5, 'rgba(251,146,60,0.08)');
+          glow.addColorStop(1, 'rgba(251,146,60,0)');
+          ctx.fillStyle = glow;
           ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.arc(p.x, p.y, fx.range * state.camera.zoom, fx.angle - fx.spread, fx.angle + fx.spread);
-          ctx.closePath();
+          ctx.arc(glowX, glowY, height * 2.4, 0, Math.PI * 2);
           ctx.fill();
+          drawSequenceFrameRotatedPivoted(
+            flameProjectileFrames,
+            fx.frameIndex,
+            p.x,
+            p.y,
+            width,
+            height,
+            fx.angle,
+            { x: 0.08, y: 0.5 },
+            { alpha: 0.96, blendMode: 'screen', flipX: true }
+          );
         } else if (fx.kind === 'hitFlash') {
           ctx.globalAlpha = Math.max(0, 0.45 - t * 0.45);
           ctx.fillStyle = fx.color;
@@ -3483,6 +3878,7 @@ function drawGoal() {
 
     ui.defenseToggle.addEventListener('click', () => {
       state.radialMenuOpen = !state.radialMenuOpen;
+      animateDefenseToggleVisual(state.radialMenuOpen);
       updateHUD();
     });
     ui.buyMinigun.addEventListener('click', () => spawnHeldTower('minigun'));

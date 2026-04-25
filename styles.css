@@ -61,6 +61,50 @@
       left: 14px;
       flex-wrap: wrap;
       max-width: 52%;
+      gap: 0;
+    }
+    .hud-counter {
+      position: relative;
+      width: 152px;
+      height: 68px;
+      pointer-events: none;
+      flex: 0 0 auto;
+    }
+    .hud-counter img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      pointer-events: none;
+      user-select: none;
+    }
+    .hud-counter strong {
+      position: absolute;
+      top: 42%;
+      right: 28px;
+      transform: translateY(-50%);
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 800;
+      color: #B4B2AA;
+      text-shadow:
+        -1px -1px 0 #111111,
+        1px -1px 0 #111111,
+        -1px 1px 0 #111111,
+        1px 1px 0 #111111,
+        0 2px 3px rgba(0, 0, 0, 0.28);
+      letter-spacing: 0.01em;
+      min-width: 36px;
+      text-align: right;
+    }
+    .points-counter strong {
+      right: 30px;
+    }
+    .lives-counter strong {
+      right: 34px;
+    }
+    .enemies-counter strong {
+      right: 37px;
     }
     .stat-chip {
       min-width: 92px;
@@ -92,31 +136,33 @@
       position: absolute;
       top: 16px;
       right: 70px;
-      min-width: 108px;
-      padding: 10px 16px 12px;
-      border-radius: 999px;
-      background: var(--ui-bg);
-      border: 1px solid rgba(255,255,255,0.16);
+      min-width: 118px;
+      padding: 0;
+      background: transparent;
+      border: 0;
       color: var(--ui-text);
       text-align: center;
-      box-shadow: 0 10px 22px rgba(0,0,0,0.22);
-      backdrop-filter: blur(6px);
+      box-shadow: none;
+      backdrop-filter: none;
       pointer-events: none;
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,0.26));
     }
     #waveBadge .label {
       display: block;
-      font-size: 10px;
+      font-size: 11px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--ui-muted);
-      margin-bottom: 2px;
+      margin-bottom: 4px;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.35);
     }
     #waveBadge strong {
       display: block;
-      font-size: 28px;
+      font-size: 40px;
       line-height: 1;
       font-family: "Marker Felt", "Bradley Hand", "Chalkboard SE", cursive;
       color: #ffffff;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.34);
       transition: color 340ms ease, text-shadow 340ms ease, transform 340ms ease;
     }
     #waveBadge.flash strong {
@@ -130,6 +176,72 @@
       bottom: 22px;
       width: 78px;
       height: 78px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      overflow: visible;
+    }
+    #playWaveBtn img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      pointer-events: none;
+    }
+    #earlyChip {
+      position: absolute;
+      left: 14px;
+      bottom: 112px;
+      min-width: 92px;
+      text-align: center;
+      pointer-events: none;
+      display: none;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      backdrop-filter: none;
+      opacity: 0;
+      transform: translateY(8px) scale(0.96);
+      transform-origin: center bottom;
+    }
+    #earlyChip.show {
+      display: block;
+      animation: early-bonus-pop 900ms ease-out forwards;
+    }
+    #earlyChip .label {
+      display: none;
+    }
+    #earlyChip strong {
+      font-size: 22px;
+      font-weight: 800;
+      color: #86efac;
+      text-shadow: 0 0 10px rgba(134, 239, 172, 0.55);
+      letter-spacing: 0.02em;
+    }
+    @keyframes early-bonus-pop {
+      0% {
+        opacity: 0;
+        transform: translateY(10px) scale(0.9);
+        filter: brightness(1);
+      }
+      18% {
+        opacity: 1;
+        transform: translateY(0) scale(1.14);
+        filter: brightness(1.28);
+      }
+      48% {
+        opacity: 1;
+        transform: translateY(-2px) scale(1);
+        filter: brightness(1.08);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-16px) scale(0.98);
+        filter: brightness(1);
+      }
     }
     #selectionHud {
       position: absolute;
@@ -179,6 +291,7 @@
     #upgradeBtn.show {
       opacity: 1;
       transform: translate(-50%, -50%) scale(1);
+      pointer-events: auto;
     }
     .upgrade-option {
       position: absolute;
@@ -189,7 +302,7 @@
       background: var(--ui-bg-strong);
       color: var(--ui-text);
       box-shadow: 0 10px 22px rgba(0,0,0,0.22);
-      pointer-events: auto;
+      pointer-events: none;
       opacity: 0;
       transform: translate(-50%, -50%) scale(0.78);
       transition: transform 170ms ease, opacity 170ms ease, filter 150ms ease;
@@ -201,7 +314,7 @@
       pointer-events: auto;
     }
     .upgrade-option:hover { filter: brightness(1.08); }
-    .upgrade-option:disabled {
+    .upgrade-option.show:disabled {
       opacity: 0.46;
       cursor: not-allowed;
     }
@@ -266,9 +379,19 @@
       bottom: 0;
       width: 78px;
       height: 78px;
-      font-size: 34px;
-      background: linear-gradient(180deg, rgba(59,130,246,0.98), rgba(29,78,216,0.92));
-      color: white;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      overflow: visible;
+    }
+    #defenseToggle img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      pointer-events: none;
     }
     .defense-option {
       position: absolute;
