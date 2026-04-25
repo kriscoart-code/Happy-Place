@@ -1,1 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tower Defense Web Foundation</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <main id="gameWrap">
+      <div id="viewport">
+        <canvas id="gameCanvas" width="1280" height="720"></canvas>
+        <div id="hud">
+          <div class="hud-panel" id="topStats">
+            <div class="stat-chip"><span class="label">Points</span><strong id="points">400</strong></div>
+            <div class="stat-chip"><span class="label">Lives</span><strong id="lives">20</strong></div>
+            <div class="stat-chip"><span class="label">Alive</span><strong id="aliveEnemies">0</strong></div>
+            <div class="stat-chip" id="earlyChip"><span class="label">Early</span><strong id="earlyBonus">+0</strong></div>
+          </div>
 
+          <button class="circle-button small" id="resetBtn" aria-label="Reset run">×</button>
+          <div id="waveBadge"><span class="label">Wave</span><strong id="wave">0</strong></div>
+          <button class="circle-button play" id="playWaveBtn" aria-label="Play wave">▶</button>
+
+          <div id="selectionHud" aria-hidden="true">
+            <div id="selectedInfo">None selected</div>
+          </div>
+          <button id="upgradeBtn" disabled aria-label="Upgrade selected tower">↑</button>
+          <button class="upgrade-option" id="upgradeRangeBtn" disabled aria-label="Upgrade range"><span class="symbol">RG</span><span class="detail">0</span></button>
+          <button class="upgrade-option" id="upgradeRateBtn" disabled aria-label="Upgrade fire rate"><span class="symbol">FR</span><span class="detail">0</span></button>
+          <button class="upgrade-option" id="upgradeDamageBtn" disabled aria-label="Upgrade damage"><span class="symbol">DM</span><span class="detail">0</span></button>
+
+          <div id="defenseMenu" aria-label="Defense menu">
+            <button class="defense-option" id="buyMinigun" type="button"><span class="symbol">MG</span><span class="cost">120</span></button>
+            <button class="defense-option" id="buyMinigunMk2" type="button"><span class="symbol">M2</span><span class="cost">145</span></button>
+            <button class="defense-option" id="buyCannon" type="button"><span class="symbol">CN</span><span class="cost">160</span></button>
+            <button class="defense-option" id="buyFlamethrower" type="button"><span class="symbol">FL</span><span class="cost">150</span></button>
+            <button class="defense-option" id="buyMine" type="button"><span class="symbol">MN</span><span class="cost">75</span></button>
+            <button class="defense-option" id="buyPlaceholder" type="button"><span class="symbol">WL</span><span class="cost">18+</span></button>
+            <button class="circle-button" id="defenseToggle" aria-label="Open defenses">+</button>
+          </div>
+        </div>
+        <div id="toast"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="./game.js"></script>
+</body>
+</html>
